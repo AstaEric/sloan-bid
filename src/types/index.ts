@@ -21,9 +21,10 @@ export interface Course {
   term: Term;
   units: number;
   isCompleted?: boolean;
+  isObligatory?: boolean;
 }
 
-export type Screen = 'login' | 'discover' | 'prioritize' | 'schedule' | 'browse';
+export type Screen = 'login' | 'discover' | 'prioritize' | 'schedule' | 'browse' | 'bidding';
 
 export interface ChatAction {
   label: string;

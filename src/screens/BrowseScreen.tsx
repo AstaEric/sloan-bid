@@ -7,7 +7,7 @@ import { StarRating } from '../components/StarRating';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 const START_HOUR = 8.5;
-const END_HOUR = 18;
+const END_HOUR = 19;
 const TOTAL_HOURS = END_HOUR - START_HOUR;
 
 function hourToPercent(hour: number) {
@@ -52,21 +52,24 @@ export function BrowseScreen() {
     needToHave,
     niceToHave,
     optional,
-    setNeedToHave,
-    setNiceToHave,
     setOptional,
     sectionOverrides,
+    setSectionOverride,
     addedCourses,
     addCourse,
+    removeCourse,
     setScreen,
     hiddenCourseIds,
+    browseAddedIds,
+    addBrowseAddedId,
+    clearBrowseAddedIds,
   } = useApp();
 
   const [search, setSearch] = useState('');
   const [filterDay, setFilterDay] = useState<string>('');
   const [filterMinRating, setFilterMinRating] = useState<number>(0);
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [tierPickerCourseId, setTierPickerCourseId] = useState<string | null>(null);
+  const [savedConfirm, setSavedConfirm] = useState(false);
 
   // ── Replicate ScheduleScreen's blockedNiceIds logic ──
 
@@ -119,27 +122,47 @@ export function BrowseScreen() {
     [visibleNeed, visibleNice, optional, sectionOverrides]
   );
 
-  // Build occupied slots from placed blocks + obligatory
+  // Build occupied slots from ALL placed blocks (including conflicting ones)
+  // Use term: null so ANY time overlap is blocked — no visual overlaps on calendar
   const occupiedSlots: Slot[] = useMemo(() => {
     const slots: Slot[] = STUDENT.obligatoryBlocks.map((ob) => ({
       day: ob.day, start: ob.startHour, end: ob.endHour, term: null,
     }));
     for (const b of placedBlocks) {
       if (!b.couldntFit) {
-        slots.push({ day: b.day, start: b.section.startHour, end: b.section.endHour, term: b.course.term });
+        slots.push({ day: b.day, start: b.section.startHour, end: b.section.endHour, term: null });
       }
     }
     return slots;
   }, [placedBlocks]);
 
-  // IDs of all courses already added
-  const addedIds = useMemo(() => new Set(addedCourses.map((c) => c.id)), [addedCourses]);
+  // Total units from placed (non-conflicting) courses
+  const totalUnits = useMemo(() => {
+    const placedCourseIds = new Set<string>();
+    for (const b of placedBlocks) {
+      if (!b.couldntFit && !b.conflict) placedCourseIds.add(b.course.id);
+    }
+    return [...placedCourseIds].reduce((sum, id) => {
+      const course = [...needToHave, ...niceToHave, ...optional].find((c) => c.id === id);
+      return sum + (course?.units ?? 0);
+    }, 0);
+  }, [placedBlocks, needToHave, niceToHave, optional]);
+
+  // IDs of all courses already added or in any tier
+  const addedIds = useMemo(() => {
+    const ids = new Set(addedCourses.map((c) => c.id));
+    for (const c of needToHave) ids.add(c.id);
+    for (const c of niceToHave) ids.add(c.id);
+    for (const c of optional) ids.add(c.id);
+    return ids;
+  }, [addedCourses, needToHave, niceToHave, optional]);
 
   // Find courses that fit and aren't already added
   const fittingCourses = useMemo(() => {
     return ALL_COURSES.filter((c) => {
       if (addedIds.has(c.id)) return false;
       if (c.isCompleted) return false;
+      if (c.isObligatory) return false;
       // At least one section must fit
       return c.sections.some((s) => sectionFits(s, c.term, occupiedSlots));
     });
@@ -157,23 +180,44 @@ export function BrowseScreen() {
     });
   }, [fittingCourses, search, filterDay, filterMinRating]);
 
-  const handleAddToTier = (e: React.MouseEvent, course: Course, tier: 'need' | 'nice' | 'optional') => {
-    e.stopPropagation();
-    addCourse(course);
-    if (tier === 'need') {
-      setNeedToHave([...needToHave, course]);
-    } else if (tier === 'nice') {
-      setNiceToHave([...niceToHave, course]);
-    } else {
-      setOptional([...optional, course]);
+  // Get occupied slots excluding a specific course (for section-fit checks)
+  const getOccupiedExcluding = (courseId: string): Slot[] => {
+    const slots: Slot[] = STUDENT.obligatoryBlocks.map((ob) => ({
+      day: ob.day, start: ob.startHour, end: ob.endHour, term: null,
+    }));
+    for (const b of placedBlocks) {
+      if (!b.couldntFit && b.course.id !== courseId) {
+        slots.push({ day: b.day, start: b.section.startHour, end: b.section.endHour, term: null });
+      }
     }
-    setTierPickerCourseId(null);
+    return slots;
   };
 
-  const handlePlusClick = (e: React.MouseEvent, courseId: string) => {
+  const handleAddAsOptional = (e: React.MouseEvent, course: Course) => {
     e.stopPropagation();
-    setTierPickerCourseId(tierPickerCourseId === courseId ? null : courseId);
+    addCourse(course);
+    // Pin to the first fitting section so it doesn't land on top of existing courses
+    const fittingSection = course.sections.find((s) => sectionFits(s, course.term, occupiedSlots));
+    if (fittingSection) {
+      setSectionOverride(course.id, fittingSection.id);
+    }
+    setOptional([...optional, course]);
+    addBrowseAddedId(course.id);
   };
+
+  const handleRemoveBrowseAdded = (courseId: string) => {
+    removeCourse(courseId);
+  };
+
+  const handleSectionToggle = (courseId: string, sectionId: string) => {
+    setSectionOverride(courseId, sectionId);
+  };
+
+  // Browse-added courses still in tiers
+  const browseAddedCourses = useMemo(() => {
+    const allTiered = [...needToHave, ...niceToHave, ...optional];
+    return allTiered.filter((c) => browseAddedIds.has(c.id));
+  }, [needToHave, niceToHave, optional, browseAddedIds]);
 
   const handleCardClick = (id: string) => {
     setExpanded(expanded === id ? null : id);
@@ -183,22 +227,30 @@ export function BrowseScreen() {
     <div className="screen browse-screen">
       {/* Static Calendar */}
       <div className="browse-calendar">
-        <button className="browse-back-link" onClick={() => setScreen('schedule')}>
-          ← Back to Schedule
-        </button>
+        <div className="browse-calendar-header">
+          <button className="browse-back-link" onClick={() => setScreen('schedule')}>
+            ← Back to Schedule
+          </button>
+          <div className="units-counter">
+            <span className="units-number">{totalUnits}</span>
+            <span className="units-label">units</span>
+          </div>
+        </div>
 
         <div className="calendar-grid">
           {/* Time column */}
           <div className="time-col">
             <div className="day-header-spacer" />
-            {Array.from({ length: Math.floor(END_HOUR) - Math.ceil(START_HOUR) + 1 }).map((_, i) => {
-              const h = Math.ceil(START_HOUR) + i;
-              return (
-                <div key={h} className="time-label" style={{ top: `${hourToPercent(h)}%` }}>
-                  {formatHour(h)}
-                </div>
-              );
-            })}
+            <div className="time-body">
+              {Array.from({ length: Math.floor(END_HOUR) - Math.ceil(START_HOUR) + 1 }).map((_, i) => {
+                const h = Math.ceil(START_HOUR) + i;
+                return (
+                  <div key={h} className="time-label" style={{ top: `${hourToPercent(h)}%` }}>
+                    {formatHour(h)}
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           {/* Day columns */}
@@ -249,13 +301,14 @@ export function BrowseScreen() {
                     return (
                       <div
                         key={`${block.course.id}-${idx}`}
-                        className={`cal-block ${cls}`}
+                        className={`cal-block ${cls} ${block.course.isObligatory ? 'cal-block-obligatory' : ''}`}
                         style={{
                           top: `${hourToPercent(block.section.startHour)}%`,
                           height: `${durationToPercent(block.section.startHour, block.section.endHour)}%`,
                         }}
                         title={block.course.title}
                       >
+                        {block.course.isObligatory && <span className="block-obligatory-badge">SFMBA Obligatory</span>}
                         <span className="block-number">{block.course.number}</span>
                         <span className="block-title">{block.course.title}</span>
                       </div>
@@ -274,6 +327,67 @@ export function BrowseScreen() {
           <span className="legend-item"><span className="legend-dot dot-optional" />Optional</span>
           <span className="legend-item"><span className="legend-dot dot-obligatory" />Obligatory</span>
         </div>
+
+        {/* Added from Browse — section toggles + remove */}
+        {browseAddedCourses.length > 0 && (
+          <div className="browse-added-panel">
+            <h4 className="browse-added-heading">Added from Browse</h4>
+            {browseAddedCourses.map((course) => {
+              const slotsExcluding = getOccupiedExcluding(course.id);
+              const assignedSectionId = placedBlocks.find((b) => b.course.id === course.id)?.section.id;
+
+              return (
+                <div key={course.id} className="browse-added-row">
+                  <div className="browse-added-info">
+                    <span className="browse-added-number">{course.number}</span>
+                    <span className="browse-added-title">{course.title}</span>
+                  </div>
+                  {course.sections.length > 1 && (
+                    <div className="browse-added-sections">
+                      {course.sections.map((s) => {
+                        const fits = sectionFits(s, course.term, slotsExcluding);
+                        const isActive = s.id === assignedSectionId;
+                        return (
+                          <button
+                            key={s.id}
+                            className={`browse-section-chip ${isActive ? 'active' : ''} ${!fits ? 'conflict' : ''}`}
+                            onClick={() => handleSectionToggle(course.id, s.id)}
+                          >
+                            {s.days} · {s.time}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <button
+                    className="browse-added-remove"
+                    onClick={() => handleRemoveBrowseAdded(course.id)}
+                    title="Remove from schedule"
+                  >
+                    ✕
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {browseAddedCourses.length > 0 && !savedConfirm && (
+          <button
+            className="save-schedule-btn browse-save-optional"
+            onClick={() => { clearBrowseAddedIds(); setSavedConfirm(true); setTimeout(() => setSavedConfirm(false), 3000); }}
+          >
+            I'm happy with this — save as optional
+          </button>
+        )}
+
+        {savedConfirm && (
+          <div className="browse-saved-toast">Saved as optional ✓</div>
+        )}
+
+        <button className="save-schedule-btn browse-go-bidding" onClick={() => setScreen('bidding')}>
+          I'm happy with this — go to bidding ➜
+        </button>
       </div>
 
       {/* Browse Courses Panel */}
@@ -345,28 +459,13 @@ export function BrowseScreen() {
                   {course.number}
                   <span className={`term-badge term-${course.term.toLowerCase()}`}>{course.term} · {course.units}u</span>
                 </div>
-                <div className="tier-picker-wrap">
-                  <button
-                    className="add-btn"
-                    onClick={(e) => handlePlusClick(e, course.id)}
-                    title="Add to schedule"
-                  >
-                    +
-                  </button>
-                  {tierPickerCourseId === course.id && (
-                    <div className="tier-picker" onClick={(e) => e.stopPropagation()}>
-                      <button className="tier-picker-btn tier-picker-need" onClick={(e) => handleAddToTier(e, course, 'need')}>
-                        Need-to-Have
-                      </button>
-                      <button className="tier-picker-btn tier-picker-nice" onClick={(e) => handleAddToTier(e, course, 'nice')}>
-                        Nice-to-Have
-                      </button>
-                      <button className="tier-picker-btn tier-picker-optional" onClick={(e) => handleAddToTier(e, course, 'optional')}>
-                        Optional
-                      </button>
-                    </div>
-                  )}
-                </div>
+                <button
+                  className="add-btn"
+                  onClick={(e) => handleAddAsOptional(e, course)}
+                  title="Add to schedule as optional"
+                >
+                  +
+                </button>
               </div>
 
               <h3 className="course-title">{course.title}</h3>
@@ -409,18 +508,12 @@ export function BrowseScreen() {
                       );
                     })}
                   </div>
-                  <div className="tier-picker-expanded">
-                    <span className="tier-picker-label">Add to:</span>
-                    <button className="tier-picker-btn tier-picker-need" onClick={(e) => handleAddToTier(e, course, 'need')}>
-                      Need-to-Have
-                    </button>
-                    <button className="tier-picker-btn tier-picker-nice" onClick={(e) => handleAddToTier(e, course, 'nice')}>
-                      Nice-to-Have
-                    </button>
-                    <button className="tier-picker-btn tier-picker-optional" onClick={(e) => handleAddToTier(e, course, 'optional')}>
-                      Optional
-                    </button>
-                  </div>
+                  <button
+                    className="save-schedule-btn browse-add-expanded-btn"
+                    onClick={(e) => handleAddAsOptional(e, course)}
+                  >
+                    Add as Optional
+                  </button>
                 </div>
               )}
             </div>

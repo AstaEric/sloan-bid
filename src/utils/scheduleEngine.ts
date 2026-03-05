@@ -134,6 +134,20 @@ export function computeSchedule(input: ScheduleInput): PlacedBlock[] {
     }
   }
 
+  // Post-process: if a need block conflicts, mark overlapping non-conflicting need blocks too
+  const conflictingNeedBlocks = blocks.filter((b) => b.tier === 'need' && b.conflict);
+  for (const cb of conflictingNeedBlocks) {
+    for (const b of blocks) {
+      if (b.tier === 'need' && !b.conflict && b.day === cb.day &&
+          b.section.startHour < cb.section.endHour &&
+          b.section.endHour > cb.section.startHour &&
+          b.course.id !== cb.course.id &&
+          termsConflict(b.course.term, cb.course.term)) {
+        b.conflict = true;
+      }
+    }
+  }
+
   // ── Step 2: Optimize section choices for Nice-to-Haves ──
   const niceSections = findBestSections(niceToHave, sectionOverrides, occupied);
 

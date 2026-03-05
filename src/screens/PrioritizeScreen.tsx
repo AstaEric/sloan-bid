@@ -83,13 +83,17 @@ function SortableCard({ course, isDragging }: { course: Course; isDragging: bool
 
 function MiniCourseCard({ course, overlay }: { course: Course; overlay?: boolean }) {
   return (
-    <div className={`mini-card ${overlay ? 'overlay' : ''}`}>
+    <div className={`mini-card ${overlay ? 'overlay' : ''} ${course.isObligatory ? 'mini-card-obligatory' : ''}`}>
       <div className="mini-card-top">
         <span className="mini-card-number">
           {course.number}
           <span className={`term-badge term-${course.term.toLowerCase()}`}>{course.term} · {course.units}u</span>
         </span>
-        <span className="mini-card-grip">⋮⋮</span>
+        {course.isObligatory ? (
+          <span className="mini-card-lock">SFMBA Obligatory</span>
+        ) : (
+          <span className="mini-card-grip">⋮⋮</span>
+        )}
       </div>
       <div className="mini-card-title">{course.title}</div>
       <div className="mini-card-prof">{course.professor}</div>
@@ -145,6 +149,7 @@ export function PrioritizeScreen() {
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
+  const [obligatoryWarning, setObligatoryWarning] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -193,11 +198,19 @@ export function PrioritizeScreen() {
     const activeContainer = findContainer(String(active.id));
     if (!activeContainer) return;
 
+    // Block moving obligatory courses out of need-to-have
+    const draggedCourse = [...needToHave, ...niceToHave, ...optional, ...unassigned].find((c) => c.id === String(active.id));
     let overContainer: Container;
     if (over.id === 'need' || over.id === 'nice' || over.id === 'optional' || over.id === 'unassigned') {
       overContainer = over.id as Container;
     } else {
       overContainer = findContainer(String(over.id)) || activeContainer;
+    }
+
+    if (draggedCourse?.isObligatory && overContainer !== 'need') {
+      setObligatoryWarning(true);
+      setTimeout(() => setObligatoryWarning(false), 3000);
+      return;
     }
 
     const activeList = getList(activeContainer);
@@ -302,6 +315,13 @@ export function PrioritizeScreen() {
             {activeCourse && <MiniCourseCard course={activeCourse} overlay />}
           </DragOverlay>
         </DndContext>
+      )}
+
+      {/* Obligatory warning toast */}
+      {obligatoryWarning && (
+        <div className="obligatory-toast">
+          This course is obligatory for your program and must stay in Need-to-Have.
+        </div>
       )}
 
       {/* Course Info Panel */}

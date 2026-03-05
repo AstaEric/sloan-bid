@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useRef, type ReactNode } from 'react';
 import type { Course, Screen, ChatMessage } from '../types';
-import { STUDENT } from '../data/courses';
+import { STUDENT, OBLIGATORY_COURSE } from '../data/courses';
 import { generateAIResponse } from '../utils/aiCounselor';
 
 interface AppState {
@@ -25,6 +25,10 @@ interface AppState {
   removeSectionOverride: (courseId: string) => void;
   hiddenCourseIds: Set<string>;
   setHiddenCourseIds: (ids: Set<string>) => void;
+  browseAddedIds: Set<string>;
+  addBrowseAddedId: (id: string) => void;
+  removeBrowseAddedId: (id: string) => void;
+  clearBrowseAddedIds: () => void;
   student: typeof STUDENT;
 }
 
@@ -40,14 +44,15 @@ const INITIAL_CHAT: ChatMessage[] = [
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [screen, setScreen] = useState<Screen>('login');
-  const [addedCourses, setAddedCourses] = useState<Course[]>([]);
-  const [needToHave, setNeedToHave] = useState<Course[]>([]);
+  const [addedCourses, setAddedCourses] = useState<Course[]>([OBLIGATORY_COURSE]);
+  const [needToHave, setNeedToHave] = useState<Course[]>([OBLIGATORY_COURSE]);
   const [niceToHave, setNiceToHave] = useState<Course[]>([]);
   const [optional, setOptional] = useState<Course[]>([]);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(INITIAL_CHAT);
   const [sectionOverrides, setSectionOverrides] = useState<Record<string, string>>({});
   const [hiddenCourseIds, setHiddenCourseIds] = useState<Set<string>>(new Set());
+  const [browseAddedIds, setBrowseAddedIds] = useState<Set<string>>(new Set());
 
   // Refs for stale-closure prevention in setTimeout
   const needRef = useRef(needToHave);
@@ -66,6 +71,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const removeCourse = (id: string) => {
+    if (id === OBLIGATORY_COURSE.id) return; // can't remove obligatory
     setAddedCourses((prev) => prev.filter((c) => c.id !== id));
     setNeedToHave((prev) => prev.filter((c) => c.id !== id));
     setNiceToHave((prev) => prev.filter((c) => c.id !== id));
@@ -73,6 +79,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSectionOverrides((prev) => {
       const next = { ...prev };
       delete next[id];
+      return next;
+    });
+    setBrowseAddedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  };
+
+  const addBrowseAddedId = (id: string) => {
+    setBrowseAddedIds((prev) => new Set(prev).add(id));
+  };
+
+  const clearBrowseAddedIds = () => setBrowseAddedIds(new Set());
+
+  const removeBrowseAddedId = (id: string) => {
+    setBrowseAddedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
       return next;
     });
   };
@@ -152,6 +177,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         removeSectionOverride,
         hiddenCourseIds,
         setHiddenCourseIds,
+        browseAddedIds,
+        addBrowseAddedId,
+        removeBrowseAddedId,
+        clearBrowseAddedIds,
         student: STUDENT,
       }}
     >

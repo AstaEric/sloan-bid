@@ -4,6 +4,7 @@ import { DiscoverScreen } from './screens/DiscoverScreen';
 import { PrioritizeScreen } from './screens/PrioritizeScreen';
 import { ScheduleScreen } from './screens/ScheduleScreen';
 import { BrowseScreen } from './screens/BrowseScreen';
+import { BiddingScreen } from './screens/BiddingScreen';
 import { Navigation } from './components/Navigation';
 import { ChatWidget } from './components/ChatWidget';
 import './index.css';
@@ -23,6 +24,7 @@ function AppInner() {
         {screen === 'prioritize' && <PrioritizeScreen />}
         {screen === 'schedule' && <ScheduleScreen />}
         {screen === 'browse' && <BrowseScreen />}
+        {screen === 'bidding' && <BiddingScreen />}
       </main>
       <ChatWidget />
     </div>

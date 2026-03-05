@@ -6,7 +6,7 @@ import { computeSchedule, getAssignedSection } from '../utils/scheduleEngine';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 const START_HOUR = 8.5;
-const END_HOUR = 18;
+const END_HOUR = 19;
 const TOTAL_HOURS = END_HOUR - START_HOUR;
 
 function hourToPercent(hour: number) {
@@ -215,13 +215,44 @@ export function ScheduleScreen() {
       }
     }
 
+    // Also include courses that conflict with problem courses (e.g. obligatory courses)
+    const allInvolvedIds = new Set(problemIds);
     const problemCourses = courses.filter((c) => problemIds.has(c.id));
-    const subsetMaxFit = computeMaxFit(problemCourses, base);
-    const mustDrop = problemCourses.length - subsetMaxFit;
-    const names = problemCourses.map((c) => c.number).join(', ');
-    const msg = `⚠ ${names} cannot all fit — no section combination works. You can take at most ${subsetMaxFit} of these ${problemCourses.length}. Uncheck ${mustDrop} to resolve.`;
+    for (const c of courses) {
+      if (allInvolvedIds.has(c.id)) continue;
+      const conflictsWithProblem = problemCourses.some((pc) =>
+        c.sections.some((cs) =>
+          pc.sections.some((ps) =>
+            cs.dayKeys.some((d) =>
+              ps.dayKeys.includes(d) &&
+              cs.startHour < ps.endHour &&
+              cs.endHour > ps.startHour &&
+              slotsConflict(
+                { day: d, start: cs.startHour, end: cs.endHour, term: c.term },
+                { day: d, start: ps.startHour, end: ps.endHour, term: pc.term }
+              )
+            )
+          )
+        )
+      );
+      if (conflictsWithProblem) allInvolvedIds.add(c.id);
+    }
 
-    return { ids: problemIds, message: msg };
+    const allInvolved = courses.filter((c) => allInvolvedIds.has(c.id));
+    const involvedMaxFit = computeMaxFit(allInvolved, base);
+    const obligatoryInvolved = allInvolved.filter((c) => c.isObligatory);
+    const droppableCount = allInvolved.length - involvedMaxFit;
+    const names = allInvolved.map((c) => c.number).join(', ');
+
+    let msg = `⚠ ${names} cannot all fit — no section combination works. You can take at most ${involvedMaxFit} of these ${allInvolved.length}.`;
+    if (obligatoryInvolved.length > 0) {
+      const oblNames = obligatoryInvolved.map((c) => c.number).join(', ');
+      msg += ` ${oblNames} is obligatory. Uncheck ${droppableCount} other course${droppableCount !== 1 ? 's' : ''} to resolve.`;
+    } else {
+      msg += ` Uncheck ${droppableCount} to resolve.`;
+    }
+
+    return { ids: allInvolvedIds, message: msg };
   }
 
   // Need-to-Have conflict analysis
@@ -272,14 +303,16 @@ export function ScheduleScreen() {
             {/* Time column */}
             <div className="time-col">
               <div className="day-header-spacer" />
-              {Array.from({ length: Math.floor(END_HOUR) - Math.ceil(START_HOUR) + 1 }).map((_, i) => {
-                const h = Math.ceil(START_HOUR) + i;
-                return (
-                  <div key={h} className="time-label" style={{ top: `${hourToPercent(h)}%` }}>
-                    {formatHour(h)}
-                  </div>
-                );
-              })}
+              <div className="time-body">
+                {Array.from({ length: Math.floor(END_HOUR) - Math.ceil(START_HOUR) + 1 }).map((_, i) => {
+                  const h = Math.ceil(START_HOUR) + i;
+                  return (
+                    <div key={h} className="time-label" style={{ top: `${hourToPercent(h)}%` }}>
+                      {formatHour(h)}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Day columns */}
@@ -376,10 +409,11 @@ export function ScheduleScreen() {
                       return (
                         <div
                           key={`${block.course.id}-${idx}`}
-                          className={`cal-block ${cls}`}
+                          className={`cal-block ${cls} ${block.course.isObligatory ? 'cal-block-obligatory' : ''}`}
                           style={blockStyle}
                           title={blockTitle}
                         >
+                          {block.course.isObligatory && <span className="block-obligatory-badge">SFMBA Obligatory</span>}
                           <span className="block-number">{block.course.number}</span>
                           <span className="block-title">{block.course.title}</span>
                           {block.conflict && <span className="block-conflict-icon">⚠</span>}
@@ -526,7 +560,9 @@ function SectionToggle({
 
   return (
     <div className={`bid-row bid-row-${tier} ${isConflicting ? 'bid-row-conflict' : ''} ${hidden ? 'bid-row-hidden' : ''}`}>
-      {tier === 'optional' ? (
+      {course.isObligatory ? (
+        <span className="auto-status" title="Obligatory — cannot be removed">✓</span>
+      ) : tier === 'optional' ? (
         <span className="auto-status" title={hidden ? 'No room' : 'Auto-added'}>
           {hidden ? '–' : '✓'}
         </span>

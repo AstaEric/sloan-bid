@@ -6,6 +6,7 @@ const NAV_ITEMS: { screen: Screen; label: string; icon: string }[] = [
   { screen: 'prioritize', label: 'Prioritize', icon: '⊟' },
   { screen: 'schedule', label: 'Schedule', icon: '▦' },
   { screen: 'browse', label: 'Browse Compatible', icon: '⊕' },
+  { screen: 'bidding', label: 'Bidding', icon: '⊘' },
 ];
 
 export function Navigation() {
