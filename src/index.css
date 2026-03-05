@@ -1279,7 +1279,8 @@ input, textarea { font-family: inherit; }
   margin-bottom: 1px;
 }
 
-.cal-block-conflict {
+.cal-block-conflict,
+.cal-block-obligatory.cal-block-conflict {
   background: #fee2e2;
   color: #991b1b;
   border-left: 3px solid #ef4444;

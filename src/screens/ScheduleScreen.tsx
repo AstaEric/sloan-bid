@@ -446,7 +446,7 @@ export function ScheduleScreen() {
                       return (
                         <div
                           key={`${block.course.id}-${idx}`}
-                          className={`cal-block ${cls} ${block.course.isObligatory ? 'cal-block-obligatory' : ''}`}
+                          className={`cal-block ${cls} ${block.course.isObligatory && !block.conflict ? 'cal-block-obligatory' : ''}`}
                           style={blockStyle}
                           title={blockTitle}
                         >

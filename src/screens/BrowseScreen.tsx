@@ -301,7 +301,7 @@ export function BrowseScreen() {
                     return (
                       <div
                         key={`${block.course.id}-${idx}`}
-                        className={`cal-block ${cls} ${block.course.isObligatory ? 'cal-block-obligatory' : ''}`}
+                        className={`cal-block ${cls} ${block.course.isObligatory && !block.conflict ? 'cal-block-obligatory' : ''}`}
                         style={{
                           top: `${hourToPercent(block.section.startHour)}%`,
                           height: `${durationToPercent(block.section.startHour, block.section.endHour)}%`,
