@@ -10,7 +10,7 @@ const NAV_ITEMS: { screen: Screen; label: string; icon: string }[] = [
 ];
 
 export function Navigation() {
-  const { screen, setScreen, student, toggleChat, isChatOpen, addedCourses } = useApp();
+  const { screen, setScreen, student, addedCourses } = useApp();
 
   return (
     <nav className="navigation">
@@ -36,15 +36,6 @@ export function Navigation() {
       </div>
 
       <div className="nav-footer">
-        <button
-          className={`nav-chat-btn ${isChatOpen ? 'active' : ''}`}
-          onClick={toggleChat}
-          title="AI Counselor"
-        >
-          <span className="nav-icon">✦</span>
-          <span className="nav-label">AI Counselor</span>
-        </button>
-
         <div className="nav-student">
           <div className="nav-avatar">{student.name.charAt(0)}</div>
           <div className="nav-student-info">
