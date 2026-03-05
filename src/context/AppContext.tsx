@@ -11,14 +11,20 @@ interface AppState {
   removeCourse: (id: string) => void;
   needToHave: Course[];
   niceToHave: Course[];
+  optional: Course[];
   setNeedToHave: (courses: Course[]) => void;
   setNiceToHave: (courses: Course[]) => void;
+  setOptional: (courses: Course[]) => void;
   isChatOpen: boolean;
   toggleChat: () => void;
   chatMessages: ChatMessage[];
   addChatMessage: (msg: ChatMessage) => void;
+  markActionsHandled: (msgId: string) => void;
   sectionOverrides: Record<string, string>;
   setSectionOverride: (courseId: string, sectionId: string) => void;
+  removeSectionOverride: (courseId: string) => void;
+  hiddenCourseIds: Set<string>;
+  setHiddenCourseIds: (ids: Set<string>) => void;
   student: typeof STUDENT;
 }
 
@@ -37,15 +43,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [addedCourses, setAddedCourses] = useState<Course[]>([]);
   const [needToHave, setNeedToHave] = useState<Course[]>([]);
   const [niceToHave, setNiceToHave] = useState<Course[]>([]);
+  const [optional, setOptional] = useState<Course[]>([]);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(INITIAL_CHAT);
   const [sectionOverrides, setSectionOverrides] = useState<Record<string, string>>({});
+  const [hiddenCourseIds, setHiddenCourseIds] = useState<Set<string>>(new Set());
 
   // Refs for stale-closure prevention in setTimeout
   const needRef = useRef(needToHave);
   needRef.current = needToHave;
   const niceRef = useRef(niceToHave);
   niceRef.current = niceToHave;
+  const optionalRef = useRef(optional);
+  optionalRef.current = optional;
   const overridesRef = useRef(sectionOverrides);
   overridesRef.current = sectionOverrides;
 
@@ -59,6 +69,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAddedCourses((prev) => prev.filter((c) => c.id !== id));
     setNeedToHave((prev) => prev.filter((c) => c.id !== id));
     setNiceToHave((prev) => prev.filter((c) => c.id !== id));
+    setOptional((prev) => prev.filter((c) => c.id !== id));
     setSectionOverrides((prev) => {
       const next = { ...prev };
       delete next[id];
@@ -72,6 +83,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSectionOverrides((prev) => ({ ...prev, [courseId]: sectionId }));
   };
 
+  const removeSectionOverride = (courseId: string) => {
+    setSectionOverrides((prev) => {
+      const next = { ...prev };
+      delete next[courseId];
+      return next;
+    });
+  };
+
+  const markActionsHandled = (msgId: string) => {
+    setChatMessages((prev) =>
+      prev.map((m) => (m.id === msgId ? { ...m, actionsHandled: true } : m))
+    );
+  };
+
   const addChatMessage = (msg: ChatMessage) => {
     setChatMessages((prev) => [...prev, msg]);
     if (msg.role === 'user') {
@@ -79,6 +104,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const result = generateAIResponse(msg.text, {
           needToHave: needRef.current,
           niceToHave: niceRef.current,
+          optional: optionalRef.current,
           sectionOverrides: overridesRef.current,
         });
 
@@ -91,7 +117,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         setChatMessages((prev) => [
           ...prev,
-          { id: `ai-${Date.now()}`, role: 'assistant', text: result.text },
+          {
+            id: `ai-${Date.now()}`,
+            role: 'assistant',
+            text: result.text,
+            actions: result.actions,
+          },
         ]);
       }, 800);
     }
@@ -107,14 +138,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
         removeCourse,
         needToHave,
         niceToHave,
+        optional,
         setNeedToHave,
         setNiceToHave,
+        setOptional,
         isChatOpen,
         toggleChat,
         chatMessages,
         addChatMessage,
+        markActionsHandled,
         sectionOverrides,
         setSectionOverride,
+        removeSectionOverride,
+        hiddenCourseIds,
+        setHiddenCourseIds,
         student: STUDENT,
       }}
     >

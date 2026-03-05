@@ -1,16 +1,18 @@
-import type { Course, Section } from '../types';
+import type { Course, Section, ChatAction } from '../types';
 import { ALL_COURSES } from '../data/courses';
 import { computeSchedule, getAssignedSection } from './scheduleEngine';
 
 interface AIContext {
   needToHave: Course[];
   niceToHave: Course[];
+  optional: Course[];
   sectionOverrides: Record<string, string>;
 }
 
 interface AIResult {
   text: string;
   sectionOverride?: { courseId: string; sectionId: string };
+  actions?: ChatAction[];
 }
 
 // Pending confirmation for conflict-causing switches
@@ -23,6 +25,7 @@ type Intent =
   | 'course_info'
   | 'prioritize_help'
   | 'confirm'
+  | 'cancel'
   | 'general';
 
 const DAY_ALIASES: Record<string, string> = {
@@ -36,11 +39,20 @@ const DAY_ALIASES: Record<string, string> = {
 // ─── Intent Classification ───
 
 function classifyIntent(text: string): Intent {
-  const t = text.toLowerCase();
+  const t = text.toLowerCase().trim();
 
-  // Check for confirmation of pending action
-  if (pendingOverride && /^(yes|yeah|sure|ok|okay|do it|go ahead|proceed|yep|yup)\b/.test(t)) {
-    return 'confirm';
+  // Check for action button values first (exact match)
+  if (t === 'confirm_switch') return 'confirm';
+  if (t === 'cancel_switch') return 'cancel';
+
+  // Check for natural language confirmation/cancellation (only if pending)
+  if (pendingOverride) {
+    if (/^(yes|yeah|sure|ok|okay|do it|go ahead|proceed|yep|yup)\b/.test(t)) {
+      return 'confirm';
+    }
+    if (/^(no|nah|nope|cancel|keep|don't|never mind)\b/.test(t)) {
+      return 'cancel';
+    }
   }
 
   if (/(switch|move|change|swap)\b/.test(t) && (findCourseInText(t) || /section/.test(t))) {
@@ -49,7 +61,7 @@ function classifyIntent(text: string): Intent {
   if (/conflict/.test(t)) return 'conflict_query';
   if (/schedule|how does .* look|looks? good|overview/.test(t)) return 'schedule_summary';
   if (/tell me about|what about|info on|details/.test(t)) return 'course_info';
-  if (/prioriti[zs]e|priority|which should|recommend|suggest/.test(t)) return 'prioritize_help';
+  if (/prioriti[zs]e|priority|which should|recommend|suggest|curious/.test(t)) return 'prioritize_help';
   return 'general';
 }
 
@@ -68,7 +80,6 @@ function findCourseInText(text: string): Course | null {
   let bestLen = 0;
   for (const c of ALL_COURSES) {
     const title = c.title.toLowerCase();
-    // Check multi-word fragments
     const words = title.split(' ');
     for (let len = words.length; len >= 1; len--) {
       for (let start = 0; start <= words.length - len; start++) {
@@ -122,6 +133,9 @@ function findTargetSection(text: string, course: Course, currentSectionId: strin
 // ─── Intent Handlers ───
 
 function handleSwitchSection(text: string, ctx: AIContext): AIResult {
+  // Clear any stale pending override when starting a new switch
+  pendingOverride = null;
+
   const course = findCourseInText(text);
   if (!course) {
     return { text: "I couldn't identify which course you'd like to switch. Could you mention the course name or number?" };
@@ -171,27 +185,50 @@ function handleSwitchSection(text: string, ctx: AIContext): AIResult {
     pendingOverride = { courseId: course.id, sectionId: target.id, courseName: course.title, sectionLabel: `${target.days} ${target.time}` };
     return {
       text: `Switching ${course.title} to ${target.days} ${target.time} would conflict with ${conflictingCourses.join(' and ')}. Want me to go ahead anyway?`,
+      actions: [
+        { label: 'Yes, switch it', value: 'confirm_switch' },
+        { label: 'No, keep it', value: 'cancel_switch' },
+      ],
     };
   }
 
   // No conflict — apply immediately
-  pendingOverride = null;
   return {
     text: `Done! I moved ${course.title} to ${target.days} ${target.time}. No conflicts.`,
     sectionOverride: { courseId: course.id, sectionId: target.id },
   };
 }
 
-function handleConfirm(_ctx: AIContext): AIResult {
+function handleConfirm(ctx: AIContext): AIResult {
   if (!pendingOverride) {
     return { text: "I'm not sure what you're confirming. What would you like me to do?" };
   }
   const { courseId, sectionId, courseName, sectionLabel } = pendingOverride;
   pendingOverride = null;
+
+  // Apply the override and check for remaining conflicts
+  const updatedOverrides = { ...ctx.sectionOverrides, [courseId]: sectionId };
+  const updatedBlocks = computeSchedule({ ...ctx, sectionOverrides: updatedOverrides });
+  const remainingConflicts = new Set(
+    updatedBlocks.filter((b) => b.conflict).map((b) => b.course.title)
+  );
+
+  let response = `Done! I moved ${courseName} to ${sectionLabel}.`;
+  if (remainingConflicts.size > 0) {
+    response += ` You still have conflicts involving ${[...remainingConflicts].join(' and ')}. Would you like me to help resolve those?`;
+  } else {
+    response += ' Your schedule is now conflict-free!';
+  }
+
   return {
-    text: `Done! I moved ${courseName} to ${sectionLabel}. The conflict is now shown on your schedule.`,
+    text: response,
     sectionOverride: { courseId, sectionId },
   };
+}
+
+function handleCancel(): AIResult {
+  pendingOverride = null;
+  return { text: "Got it, I'll keep the current section. Let me know if you'd like to make any other changes." };
 }
 
 function handleConflictQuery(ctx: AIContext): AIResult {
@@ -264,11 +301,16 @@ function handleCourseInfo(text: string): AIResult {
 
 function handlePrioritizeHelp(ctx: AIContext): AIResult {
   const allCourses = [...ctx.needToHave, ...ctx.niceToHave];
-  if (allCourses.length === 0) {
+  const tips: string[] = [];
+
+  if (allCourses.length === 0 && ctx.optional.length === 0) {
     return { text: "You haven't added any courses to prioritize yet. Head to the Discover tab to browse and add courses to your list." };
   }
 
-  const tips: string[] = [];
+  if (allCourses.length === 0 && ctx.optional.length > 0) {
+    tips.push(`You have ${ctx.optional.length} course${ctx.optional.length > 1 ? 's' : ''} in your Optional list: ${ctx.optional.map((c) => c.title).join(', ')}. Consider moving some to Need-to-Have or Nice-to-Have to include them in your schedule.`);
+    return { text: tips.join('\n\n') };
+  }
 
   // Courses with only one section should be need-to-have
   const singleSection = allCourses.filter((c) => c.sections.length === 1);
@@ -279,6 +321,11 @@ function handlePrioritizeHelp(ctx: AIContext): AIResult {
   // Highest rated courses
   const topRated = [...allCourses].sort((a, b) => b.rating - a.rating).slice(0, 2);
   tips.push(`Your highest-rated courses are ${topRated.map((c) => `${c.title} (${c.rating})`).join(' and ')}.`);
+
+  // Optional awareness
+  if (ctx.optional.length > 0) {
+    tips.push(`You also have ${ctx.optional.length} course${ctx.optional.length > 1 ? 's' : ''} in Optional (${ctx.optional.map((c) => c.title).join(', ')}). These won't appear on your schedule until you move them to a priority tier.`);
+  }
 
   // Check current conflicts
   const blocks = computeSchedule(ctx);
@@ -295,7 +342,7 @@ function handleGeneral(ctx: AIContext): AIResult {
   const allCourses = [...ctx.needToHave, ...ctx.niceToHave];
 
   if (allCourses.length === 0) {
-    return { text: "Hi Astrid! Start by browsing courses in the Discover tab, then come back to prioritize and build your schedule. I can help with conflicts and section choices along the way." };
+    return { text: "Hi! Start by browsing courses in the Discover tab, then come back to prioritize and build your schedule. I can help with conflicts and section choices along the way." };
   }
 
   const conflicting = blocks.filter((b) => b.conflict);
@@ -312,9 +359,16 @@ function handleGeneral(ctx: AIContext): AIResult {
 export function generateAIResponse(userText: string, ctx: AIContext): AIResult {
   const intent = classifyIntent(userText);
 
+  // Clear pending override on any non-confirm/non-cancel intent
+  if (intent !== 'confirm' && intent !== 'cancel') {
+    pendingOverride = null;
+  }
+
   switch (intent) {
     case 'confirm':
       return handleConfirm(ctx);
+    case 'cancel':
+      return handleCancel();
     case 'switch_section':
       return handleSwitchSection(userText, ctx);
     case 'conflict_query':

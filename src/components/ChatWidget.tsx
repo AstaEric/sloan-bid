@@ -9,7 +9,7 @@ const QUICK_REPLIES = [
 ];
 
 export function ChatWidget() {
-  const { isChatOpen, toggleChat, chatMessages, addChatMessage, student } = useApp();
+  const { isChatOpen, toggleChat, chatMessages, addChatMessage, markActionsHandled, student } = useApp();
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -30,6 +30,11 @@ export function ChatWidget() {
     if (!text.trim()) return;
     addChatMessage({ id: `u-${Date.now()}`, role: 'user', text: text.trim() });
     setInput('');
+  };
+
+  const handleAction = (msgId: string, actionValue: string) => {
+    markActionsHandled(msgId);
+    sendMessage(actionValue);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -70,7 +75,22 @@ export function ChatWidget() {
               {msg.role === 'assistant' && (
                 <div className="bubble-avatar">✦</div>
               )}
-              <div className="bubble-text">{msg.text}</div>
+              <div className="bubble-content">
+                <div className="bubble-text">{msg.text}</div>
+                {msg.actions && !msg.actionsHandled && (
+                  <div className="bubble-actions">
+                    {msg.actions.map((action) => (
+                      <button
+                        key={action.value}
+                        className="bubble-action-btn"
+                        onClick={() => handleAction(msg.id, action.value)}
+                      >
+                        {action.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           ))}
           <div ref={bottomRef} />

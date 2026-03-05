@@ -46,7 +46,7 @@ export function LoginScreen() {
         </button>
 
         <p className="login-footnote">
-          MIT Sloan School of Management · Course Bidding System
+          MIT Sloan School of Management · Course Selection
         </p>
       </div>
 

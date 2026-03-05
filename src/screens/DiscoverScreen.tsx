@@ -119,7 +119,10 @@ export function DiscoverScreen() {
             )}
 
             <div className="course-card-header">
-              <div className="course-number">{course.number}</div>
+              <div className="course-number">
+                {course.number}
+                <span className={`term-badge term-${course.term.toLowerCase()}`}>{course.term} · {course.units}u</span>
+              </div>
               {!course.isCompleted && (
                 <button
                   className={`add-btn ${isAdded(course) ? 'added' : ''}`}
@@ -150,22 +153,10 @@ export function DiscoverScreen() {
             {expanded === course.id && (
               <div className="course-expanded" onClick={(e) => e.stopPropagation()}>
                 <div className="expanded-divider" />
-                <div className="expanded-sections">
-                  <h4 className="expanded-label">Available Sections</h4>
-                  {course.sections.map((s) => (
-                    <div key={s.id} className="expanded-section-row">
-                      <span className="section-days">{s.days}</span>
-                      <span className="section-time">{s.time}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="expanded-rating-row">
-                  <StarRating rating={course.rating} size="md" />
-                </div>
-                <div className="expanded-quote-full">
-                  <span className="quote-mark">"</span>
-                  {course.reviewQuote}
-                  <span className="quote-mark">"</span>
+                <div className="expanded-syllabus">
+                  <div className="syllabus-icon">&#x1F4D8;</div>
+                  <h4 className="expanded-label">Course Overview</h4>
+                  <p className="course-description">{course.description}</p>
                 </div>
                 {!isAdded(course) && (
                   <button

@@ -7,6 +7,8 @@ export interface Section {
   endHour: number;
 }
 
+export type Term = 'Full' | 'H3' | 'H4';
+
 export interface Course {
   id: string;
   number: string;
@@ -14,27 +16,24 @@ export interface Course {
   professor: string;
   rating: number;
   reviewQuote: string;
+  description: string;
   sections: Section[];
+  term: Term;
+  units: number;
   isCompleted?: boolean;
 }
 
-export type Screen = 'login' | 'discover' | 'prioritize' | 'schedule';
+export type Screen = 'login' | 'discover' | 'prioritize' | 'schedule' | 'browse';
+
+export interface ChatAction {
+  label: string;
+  value: string;
+}
 
 export interface ChatMessage {
   id: string;
   role: 'assistant' | 'user';
   text: string;
-}
-
-export interface ScheduledCourse {
-  course: Course;
-  section: Section;
-  tier: 'need' | 'nice';
-  bidPoints: number;
-}
-
-export interface ConflictInfo {
-  courseA: Course;
-  courseB: Course;
-  section: Section;
+  actions?: ChatAction[];
+  actionsHandled?: boolean;
 }

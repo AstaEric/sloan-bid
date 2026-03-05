@@ -63,7 +63,7 @@ function DroppableColumn({
   );
 }
 
-// Draggable unassigned card
+// Draggable card (standard size)
 function SortableCard({ course, isDragging }: { course: Course; isDragging: boolean }) {
   const { setNodeRef, attributes, listeners, transform, transition } = useSortable({
     id: course.id,
@@ -80,11 +80,15 @@ function SortableCard({ course, isDragging }: { course: Course; isDragging: bool
   );
 }
 
+
 function MiniCourseCard({ course, overlay }: { course: Course; overlay?: boolean }) {
   return (
     <div className={`mini-card ${overlay ? 'overlay' : ''}`}>
       <div className="mini-card-top">
-        <span className="mini-card-number">{course.number}</span>
+        <span className="mini-card-number">
+          {course.number}
+          <span className={`term-badge term-${course.term.toLowerCase()}`}>{course.term} · {course.units}u</span>
+        </span>
         <span className="mini-card-grip">⋮⋮</span>
       </div>
       <div className="mini-card-title">{course.title}</div>
@@ -94,7 +98,8 @@ function MiniCourseCard({ course, overlay }: { course: Course; overlay?: boolean
   );
 }
 
-// Unassigned pool — courses added but not yet in either column
+
+// Unassigned pool — courses added but not yet in any column
 function UnassignedPool({
   courses,
   activeId,
@@ -125,13 +130,16 @@ function UnassignedPool({
   );
 }
 
+
 export function PrioritizeScreen() {
   const {
     addedCourses,
     needToHave,
     niceToHave,
+    optional,
     setNeedToHave,
     setNiceToHave,
+    setOptional,
     setScreen,
   } = useApp();
 
@@ -142,13 +150,20 @@ export function PrioritizeScreen() {
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
 
-  // Courses in the unassigned pool: added but not in need/nice
-  const assignedIds = new Set([...needToHave.map((c) => c.id), ...niceToHave.map((c) => c.id)]);
+  // Courses in the unassigned pool: added but not in need/nice/optional
+  const assignedIds = new Set([
+    ...needToHave.map((c) => c.id),
+    ...niceToHave.map((c) => c.id),
+    ...optional.map((c) => c.id),
+  ]);
   const unassigned = addedCourses.filter((c) => !assignedIds.has(c.id));
 
-  const findContainer = (id: string): 'need' | 'nice' | 'unassigned' | null => {
+  type Container = 'need' | 'nice' | 'optional' | 'unassigned';
+
+  const findContainer = (id: string): Container | null => {
     if (needToHave.find((c) => c.id === id)) return 'need';
     if (niceToHave.find((c) => c.id === id)) return 'nice';
+    if (optional.find((c) => c.id === id)) return 'optional';
     if (unassigned.find((c) => c.id === id)) return 'unassigned';
     return null;
   };
@@ -156,12 +171,14 @@ export function PrioritizeScreen() {
   const getList = (container: string): Course[] => {
     if (container === 'need') return needToHave;
     if (container === 'nice') return niceToHave;
+    if (container === 'optional') return optional;
     return unassigned;
   };
 
   const setList = (container: string, courses: Course[]) => {
     if (container === 'need') setNeedToHave(courses);
     else if (container === 'nice') setNiceToHave(courses);
+    else if (container === 'optional') setOptional(courses);
     // unassigned is derived
   };
 
@@ -176,10 +193,9 @@ export function PrioritizeScreen() {
     const activeContainer = findContainer(String(active.id));
     if (!activeContainer) return;
 
-    let overContainer: 'need' | 'nice' | 'unassigned';
-    // Check if dropped directly on a container
-    if (over.id === 'need' || over.id === 'nice' || over.id === 'unassigned') {
-      overContainer = over.id as 'need' | 'nice' | 'unassigned';
+    let overContainer: Container;
+    if (over.id === 'need' || over.id === 'nice' || over.id === 'optional' || over.id === 'unassigned') {
+      overContainer = over.id as Container;
     } else {
       overContainer = findContainer(String(over.id)) || activeContainer;
     }
@@ -205,19 +221,19 @@ export function PrioritizeScreen() {
       const newOverList = [...overList.slice(0, insertAt), item, ...overList.slice(insertAt)];
 
       // Update source
-      if (activeContainer === 'need') setNeedToHave(newActiveList);
-      else if (activeContainer === 'nice') setNiceToHave(newActiveList);
-      // If from unassigned, nothing to set (it's derived)
+      if (activeContainer !== 'unassigned') {
+        setList(activeContainer, newActiveList);
+      }
 
       // Update destination
-      if (overContainer === 'need') setNeedToHave(newOverList);
-      else if (overContainer === 'nice') setNiceToHave(newOverList);
-      // If dropping back to unassigned, remove from need/nice (source already handled)
+      if (overContainer !== 'unassigned') {
+        setList(overContainer, newOverList);
+      }
     }
   };
 
   const activeCourse = activeId
-    ? [...needToHave, ...niceToHave, ...unassigned].find((c) => c.id === activeId)
+    ? [...needToHave, ...niceToHave, ...optional, ...unassigned].find((c) => c.id === activeId)
     : null;
 
   return (
@@ -253,7 +269,7 @@ export function PrioritizeScreen() {
             {/* Unassigned Pool */}
             <UnassignedPool courses={unassigned} activeId={activeId} />
 
-            {/* Two-column tiers */}
+            {/* Three-column tiers */}
             <div className="tier-columns">
               <DroppableColumn
                 id="need"
@@ -271,13 +287,19 @@ export function PrioritizeScreen() {
                 emptyLabel="Drop courses here — lower priority"
                 activeId={activeId}
               />
+              <DroppableColumn
+                id="optional"
+                title="Optional"
+                courses={optional}
+                color="optional"
+                emptyLabel="Drop courses here — won't be scheduled"
+                activeId={activeId}
+              />
             </div>
           </div>
 
           <DragOverlay>
-            {activeCourse && (
-              <MiniCourseCard course={activeCourse} overlay />
-            )}
+            {activeCourse && <MiniCourseCard course={activeCourse} overlay />}
           </DragOverlay>
         </DndContext>
       )}
