@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, type ReactNode } from 'react';
 import type { Course, Screen, ChatMessage, ScheduledCourse } from '../types';
 import { STUDENT } from '../data/courses';
 

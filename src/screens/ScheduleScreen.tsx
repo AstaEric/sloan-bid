@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import { useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import type { Course, Section } from '../types';
 import { STUDENT } from '../data/courses';
@@ -33,7 +33,7 @@ interface PlacedBlock {
 }
 
 export function ScheduleScreen() {
-  const { needToHave, niceToHave, setScreen, bidPoints, setBidPoints, student } = useApp();
+  const { needToHave, niceToHave, setScreen, bidPoints, setBidPoints } = useApp();
 
   // Auto-assign sections: pick first non-conflicting section
   const placedBlocks = useMemo<PlacedBlock[]>(() => {

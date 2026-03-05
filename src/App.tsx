@@ -1,4 +1,3 @@
-import React from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { LoginScreen } from './screens/LoginScreen';
 import { DiscoverScreen } from './screens/DiscoverScreen';
