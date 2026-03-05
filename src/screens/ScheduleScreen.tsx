@@ -45,6 +45,7 @@ export function ScheduleScreen() {
   const [forcedVisibleIds, setForcedVisibleIds] = useState<Set<string>>(new Set());
   const overlapIdsRef = useRef<Set<string>>(new Set());
   const niceOverlapIdsRef = useRef<Set<string>>(new Set());
+  const optOverlapIdsRef = useRef<Set<string>>(new Set());
 
   // Shared conflict analysis helpers
   type Slot = { day: string; start: number; end: number; term: Term | null };
@@ -99,8 +100,41 @@ export function ScheduleScreen() {
     return true;
   });
 
+  // ── Step 4b: Compute need+nice base slots for optional analysis ──
+  const needNiceBlocks = useMemo(
+    () => computeSchedule({ needToHave: visibleNeed, niceToHave: visibleNice, optional: [], sectionOverrides }),
+    [visibleNeed, visibleNice, sectionOverrides]
+  );
+
+  const needNiceBaseSlots = useMemo(() => {
+    const slots: Slot[] = [...obligatorySlots];
+    for (const b of needNiceBlocks) {
+      if (!b.conflict) {
+        slots.push({ day: b.day, start: b.section.startHour, end: b.section.endHour, term: b.course.term });
+      }
+    }
+    return slots;
+  }, [needNiceBlocks]);
+
+  // ── Step 4c: Identify blocked Optionals (no section fits against need+nice) ──
+  const blockedOptionalIds = useMemo(() => {
+    const blocked = new Set<string>();
+    for (const c of optional) {
+      const canFit = c.sections.some((sec) => {
+        const slots: Slot[] = sec.dayKeys.map((d) => ({ day: d, start: sec.startHour, end: sec.endHour, term: c.term }));
+        return !slots.some((s) => needNiceBaseSlots.some((o) => slotsConflict(s, o)));
+      });
+      if (!canFit) blocked.add(c.id);
+    }
+    return blocked;
+  }, [optional, needNiceBaseSlots]);
+
   // ── Step 5: Full schedule with all visible courses ──
-  const visibleOptional = optional.filter((c) => !hiddenIds.has(c.id));
+  const visibleOptional = optional.filter((c) => {
+    if (hiddenIds.has(c.id)) return false;
+    if (blockedOptionalIds.has(c.id) && !forcedVisibleIds.has(c.id)) return false;
+    return true;
+  });
 
   const placedBlocks = useMemo(
     () => computeSchedule({ needToHave: visibleNeed, niceToHave: visibleNice, optional: visibleOptional, sectionOverrides }),
@@ -111,13 +145,14 @@ export function ScheduleScreen() {
   const isHidden = (courseId: string) => {
     if (hiddenIds.has(courseId)) return true;
     if (blockedNiceIds.has(courseId) && !forcedVisibleIds.has(courseId)) return true;
+    if (blockedOptionalIds.has(courseId) && !forcedVisibleIds.has(courseId)) return true;
     return false;
   };
 
   // Toggle handler
   const toggleCourse = (courseId: string) => {
-    if (blockedNiceIds.has(courseId)) {
-      // Blocked Nice-to-Have: toggle forced visibility
+    if (blockedNiceIds.has(courseId) || blockedOptionalIds.has(courseId)) {
+      // Blocked course: toggle forced visibility
       setForcedVisibleIds((prev) => {
         const next = new Set(prev);
         if (next.has(courseId)) next.delete(courseId);
@@ -132,7 +167,7 @@ export function ScheduleScreen() {
       } else {
         next.add(courseId);
         // Clear section overrides for sibling problem-group courses
-        for (const ref of [overlapIdsRef, niceOverlapIdsRef]) {
+        for (const ref of [overlapIdsRef, niceOverlapIdsRef, optOverlapIdsRef]) {
           if (ref.current.has(courseId)) {
             for (const id of ref.current) {
               if (id !== courseId) removeSectionOverride(id);
@@ -264,6 +299,15 @@ export function ScheduleScreen() {
   }, [visibleNice, blockedNiceIds, needBaseSlots, placedBlocks]);
 
   niceOverlapIdsRef.current = niceOverlapIds;
+
+  // Optional conflict analysis — only non-blocked visible optionals
+  const { optOverlapIds, optConflictMessage } = useMemo(() => {
+    const analyzable = visibleOptional.filter((c) => !blockedOptionalIds.has(c.id));
+    const result = analyzeConflicts(analyzable, needNiceBaseSlots);
+    return { optOverlapIds: result.ids, optConflictMessage: result.message };
+  }, [visibleOptional, blockedOptionalIds, needNiceBaseSlots, placedBlocks]);
+
+  optOverlapIdsRef.current = optOverlapIds;
 
   // Total units from placed (non-conflicting) courses
   const placedCourseIds = new Set<string>();
@@ -514,11 +558,17 @@ export function ScheduleScreen() {
                       currentSectionId={getAssignedSection(placedBlocks, c.id)?.id || null}
                       onSwitch={(sectionId) => setSectionOverride(c.id, sectionId)}
                       onToggle={() => toggleCourse(c.id)}
-                      hidden={hiddenIds.has(c.id)}
+                      hidden={isHidden(c.id)}
                       tier="optional"
-                      overlapIds={new Set<string>()}
+                      overlapIds={optOverlapIds}
                     />
                 ))}
+              </div>
+            )}
+
+            {optConflictMessage && (
+              <div className="sidebar-hint">
+                <p>{optConflictMessage}</p>
               </div>
             )}
 
