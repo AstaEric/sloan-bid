@@ -1662,7 +1662,7 @@ input, textarea { font-family: inherit; }
 
 .bid-row-need { border-left: 3px solid var(--navy); }
 .bid-row-nice { border-left: 3px solid var(--ice-dim); }
-.bid-row-optional { border-left: 3px solid var(--gray-300); opacity: 0.6; }
+.bid-row-optional { border-left: 3px solid #818cf8; }
 .bid-row-hidden { opacity: 0.45; }
 
 .course-checkbox {
