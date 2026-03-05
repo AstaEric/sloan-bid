@@ -1258,10 +1258,9 @@ input, textarea { font-family: inherit; }
 }
 
 .cal-block-optional {
-  background: var(--gray-50, #f9fafb);
-  color: var(--gray-600);
-  border-left: 3px solid var(--gray-300);
-  opacity: 0.8;
+  background: #e0e7ff;
+  color: #312e81;
+  border-left: 3px solid #818cf8;
 }
 
 .cal-block-obligatory {

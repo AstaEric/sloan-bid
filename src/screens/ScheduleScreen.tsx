@@ -100,9 +100,11 @@ export function ScheduleScreen() {
   });
 
   // ── Step 5: Full schedule with all visible courses ──
+  const visibleOptional = optional.filter((c) => !hiddenIds.has(c.id));
+
   const placedBlocks = useMemo(
-    () => computeSchedule({ needToHave: visibleNeed, niceToHave: visibleNice, optional, sectionOverrides }),
-    [visibleNeed, visibleNice, optional, sectionOverrides]
+    () => computeSchedule({ needToHave: visibleNeed, niceToHave: visibleNice, optional: visibleOptional, sectionOverrides }),
+    [visibleNeed, visibleNice, visibleOptional, sectionOverrides]
   );
 
   // Effective hidden check
@@ -141,15 +143,6 @@ export function ScheduleScreen() {
       setHiddenIds(next);
     }
   };
-
-  // Auto-managed tiers: which Optionals actually fit
-  const fittedOptionalIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const b of placedBlocks) {
-      if (b.tier === 'optional' && !b.couldntFit) ids.add(b.course.id);
-    }
-    return ids;
-  }, [placedBlocks]);
 
   // Build a set of need-to-have course IDs for quick lookup
   const needIds = new Set(needToHave.map((c) => c.id));
@@ -278,11 +271,11 @@ export function ScheduleScreen() {
     if (!b.couldntFit && !b.conflict) placedCourseIds.add(b.course.id);
   }
   const totalUnits = [...placedCourseIds].reduce((sum, id) => {
-    const course = [...needToHave, ...niceToHave].find((c) => c.id === id);
+    const course = [...needToHave, ...niceToHave, ...optional].find((c) => c.id === id);
     return sum + (course?.units ?? 0);
   }, 0);
 
-  if (needToHave.length === 0 && niceToHave.length === 0) {
+  if (needToHave.length === 0 && niceToHave.length === 0 && optional.length === 0) {
     return (
       <div className="screen schedule-screen">
         <div className="empty-state">
@@ -514,21 +507,18 @@ export function ScheduleScreen() {
             {optional.length > 0 && (
               <div className="bid-section">
                 <div className="bid-section-label optional">Optional</div>
-                {optional.map((c) => {
-                  const fits = fittedOptionalIds.has(c.id);
-                  return (
+                {optional.map((c) => (
                     <SectionToggle
                       key={c.id}
                       course={c}
                       currentSectionId={getAssignedSection(placedBlocks, c.id)?.id || null}
                       onSwitch={(sectionId) => setSectionOverride(c.id, sectionId)}
-                      onToggle={() => {}}
-                      hidden={!fits}
+                      onToggle={() => toggleCourse(c.id)}
+                      hidden={hiddenIds.has(c.id)}
                       tier="optional"
                       overlapIds={new Set<string>()}
                     />
-                  );
-                })}
+                ))}
               </div>
             )}
 
@@ -562,10 +552,6 @@ function SectionToggle({
     <div className={`bid-row bid-row-${tier} ${isConflicting ? 'bid-row-conflict' : ''} ${hidden ? 'bid-row-hidden' : ''}`}>
       {course.isObligatory ? (
         <span className="auto-status" title="Obligatory — cannot be removed">✓</span>
-      ) : tier === 'optional' ? (
-        <span className="auto-status" title={hidden ? 'No room' : 'Auto-added'}>
-          {hidden ? '–' : '✓'}
-        </span>
       ) : (
         <input
           type="checkbox"
