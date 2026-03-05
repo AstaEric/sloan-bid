@@ -3,8 +3,8 @@ import { useApp } from '../context/AppContext';
 
 const QUICK_REPLIES = [
   'Help me prioritize',
-  'I have a schedule conflict',
-  'What should I bid?',
+  'Do I have any conflicts?',
+  'How does my schedule look?',
   'Tell me about a course',
 ];
 

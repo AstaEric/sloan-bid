@@ -1,7 +1,8 @@
-import { useMemo, useEffect } from 'react';
+import { useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import type { Course, Section } from '../types';
+import type { Course } from '../types';
 import { STUDENT } from '../data/courses';
+import { computeSchedule, getAssignedSection } from '../utils/scheduleEngine';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 const START_HOUR = 9;
@@ -24,97 +25,15 @@ function formatHour(h: number) {
   return `${display}${mm === '00' ? '' : ':' + mm}${ampm}`;
 }
 
-interface PlacedBlock {
-  course: Course;
-  section: Section;
-  day: string;
-  tier: 'need' | 'nice';
-  conflict: boolean;
-}
-
 export function ScheduleScreen() {
-  const { needToHave, niceToHave, setScreen, bidPoints, setBidPoints } = useApp();
+  const { needToHave, niceToHave, setScreen, sectionOverrides, setSectionOverride } = useApp();
 
-  // Auto-assign sections: pick first non-conflicting section
-  const placedBlocks = useMemo<PlacedBlock[]>(() => {
-    const blocks: PlacedBlock[] = [];
-    const occupied: { day: string; start: number; end: number; courseId: string }[] = [];
-
-    // Add obligatory blocks
-    for (const ob of STUDENT.obligatoryBlocks) {
-      occupied.push({ day: ob.day, start: ob.startHour, end: ob.endHour, courseId: 'obligatory' });
-    }
-
-    const processGroup = (courses: Course[], tier: 'need' | 'nice') => {
-      for (const course of courses) {
-        let placed = false;
-        for (const section of course.sections) {
-          const conflicts = section.dayKeys.some((day) =>
-            occupied.some(
-              (o) =>
-                o.day === day &&
-                o.courseId !== course.id &&
-                section.startHour < o.end &&
-                section.endHour > o.start
-            )
-          );
-          if (!conflicts) {
-            for (const day of section.dayKeys) {
-              blocks.push({ course, section, day, tier, conflict: false });
-              occupied.push({ day, start: section.startHour, end: section.endHour, courseId: course.id });
-            }
-            placed = true;
-            break;
-          }
-        }
-        // If no non-conflicting section, place with conflict flag using first section
-        if (!placed && course.sections.length > 0) {
-          const section = course.sections[0];
-          for (const day of section.dayKeys) {
-            blocks.push({ course, section, day, tier, conflict: true });
-          }
-        }
-      }
-    };
-
-    processGroup(needToHave, 'need');
-    processGroup(niceToHave, 'nice');
-    return blocks;
-  }, [needToHave, niceToHave]);
+  const placedBlocks = useMemo(
+    () => computeSchedule({ needToHave, niceToHave, sectionOverrides }),
+    [needToHave, niceToHave, sectionOverrides]
+  );
 
   const hasNeedConflict = placedBlocks.some((b) => b.conflict && b.tier === 'need');
-
-  // Auto-calculate bid points
-  useEffect(() => {
-    if (needToHave.length === 0 && niceToHave.length === 0) return;
-    const total = 1000;
-    const needWeight = 0.75;
-    const niceWeight = 0.25;
-    const newBp: Record<string, number> = {};
-
-    const needCount = needToHave.length;
-    const niceCount = niceToHave.length;
-
-    if (needCount > 0) {
-      const perNeed = Math.floor((total * needWeight) / needCount);
-      needToHave.forEach((c, i) => {
-        newBp[c.id] = i === 0 ? perNeed + (total * needWeight % needCount) : perNeed;
-      });
-    }
-    if (niceCount > 0) {
-      const perNice = Math.floor((total * niceWeight) / niceCount);
-      niceToHave.forEach((c, i) => {
-        newBp[c.id] = i === 0 ? perNice + (total * niceWeight % niceCount) : perNice;
-      });
-    }
-    setBidPoints(newBp);
-  }, [needToHave, niceToHave]);
-
-  const usedPoints = Object.values(bidPoints).reduce((s, v) => s + v, 0);
-
-  const handleBidChange = (id: string, val: number) => {
-    setBidPoints({ ...bidPoints, [id]: val });
-  };
 
   if (needToHave.length === 0 && niceToHave.length === 0) {
     return (
@@ -235,36 +154,23 @@ export function ScheduleScreen() {
           </div>
         </div>
 
-        {/* Bid Points Sidebar */}
+        {/* Section Toggle Sidebar */}
         <div className="bid-sidebar">
           <div className="bid-header">
-            <h2 className="bid-title">Bid Allocation</h2>
-            <div className={`bid-total ${usedPoints > 1000 ? 'over' : 'ok'}`}>
-              {usedPoints} / 1,000 pts
-            </div>
-          </div>
-
-          {usedPoints > 1000 && (
-            <div className="bid-warning">Over budget by {usedPoints - 1000} pts</div>
-          )}
-
-          <div className="bid-progress">
-            <div
-              className="bid-bar"
-              style={{ width: `${Math.min(100, (usedPoints / 1000) * 100)}%` }}
-            />
+            <h2 className="bid-title">Sections</h2>
           </div>
 
           {needToHave.length > 0 && (
             <div className="bid-section">
               <div className="bid-section-label need">Need-to-Have</div>
               {needToHave.map((c) => (
-                <BidRow
+                <SectionToggle
                   key={c.id}
                   course={c}
-                  value={bidPoints[c.id] || 0}
-                  onChange={(v) => handleBidChange(c.id, v)}
+                  currentSectionId={getAssignedSection(placedBlocks, c.id)?.id || null}
+                  onSwitch={(sectionId) => setSectionOverride(c.id, sectionId)}
                   tier="need"
+                  placedBlocks={placedBlocks}
                 />
               ))}
             </div>
@@ -274,19 +180,20 @@ export function ScheduleScreen() {
             <div className="bid-section">
               <div className="bid-section-label nice">Nice-to-Have</div>
               {niceToHave.map((c) => (
-                <BidRow
+                <SectionToggle
                   key={c.id}
                   course={c}
-                  value={bidPoints[c.id] || 0}
-                  onChange={(v) => handleBidChange(c.id, v)}
+                  currentSectionId={getAssignedSection(placedBlocks, c.id)?.id || null}
+                  onSwitch={(sectionId) => setSectionOverride(c.id, sectionId)}
                   tier="nice"
+                  placedBlocks={placedBlocks}
                 />
               ))}
             </div>
           )}
 
           <div className="bid-hint">
-            Adjust allocations above. Total must equal 1,000 points.
+            Select a section for each course. The calendar updates automatically.
           </div>
         </div>
       </div>
@@ -294,34 +201,43 @@ export function ScheduleScreen() {
   );
 }
 
-function BidRow({
+function SectionToggle({
   course,
-  value,
-  onChange,
+  currentSectionId,
+  onSwitch,
   tier,
+  placedBlocks,
 }: {
   course: Course;
-  value: number;
-  onChange: (v: number) => void;
+  currentSectionId: string | null;
+  onSwitch: (sectionId: string) => void;
   tier: 'need' | 'nice';
+  placedBlocks: ReturnType<typeof computeSchedule>;
 }) {
+  const isConflicting = placedBlocks.some((b) => b.course.id === course.id && b.conflict);
+
   return (
-    <div className={`bid-row bid-row-${tier}`}>
+    <div className={`bid-row bid-row-${tier} ${isConflicting ? 'bid-row-conflict' : ''}`}>
       <div className="bid-row-info">
         <span className="bid-row-number">{course.number}</span>
         <span className="bid-row-title">{course.title}</span>
       </div>
-      <div className="bid-row-input-wrap">
-        <input
-          type="number"
-          className="bid-input"
-          value={value}
-          min={0}
-          max={1000}
-          onChange={(e) => onChange(Number(e.target.value))}
-        />
-        <span className="bid-pts-label">pts</span>
-      </div>
+      {course.sections.length > 1 ? (
+        <div className="section-toggle-group">
+          {course.sections.map((s) => (
+            <button
+              key={s.id}
+              className={`section-toggle-btn ${s.id === currentSectionId ? 'active' : ''}`}
+              onClick={() => onSwitch(s.id)}
+              title={`${s.days} ${s.time}`}
+            >
+              {s.days}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <span className="section-single">{course.sections[0]?.days}</span>
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 /* ============================================================
    SloanBid — Global Styles
-   Colors: Navy #1E2761 | Ice Blue #CADCFC | White #FFFFFF
+   Colors: MIT Red #A31F34 | Rose #F2D4D7 | White #FFFFFF
    ============================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
@@ -9,26 +9,26 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --navy: #1E2761;
-  --navy-dark: #151d4f;
-  --navy-light: #2a3580;
-  --ice: #CADCFC;
-  --ice-light: #e8f0fe;
-  --ice-dim: #a8c4f5;
+  --navy: #800020;
+  --navy-dark: #650019;
+  --navy-light: #9A1535;
+  --ice: #F2D4D7;
+  --ice-light: #FAE9EB;
+  --ice-dim: #D4949C;
   --white: #ffffff;
-  --gray-50: #f8f9fc;
-  --gray-100: #f0f2f8;
-  --gray-200: #e2e6f0;
-  --gray-300: #c8cedf;
-  --gray-400: #9aa3ba;
-  --gray-500: #6b748f;
-  --gray-600: #4a5270;
+  --gray-50: #faf8f8;
+  --gray-100: #f3f0f0;
+  --gray-200: #e6e2e3;
+  --gray-300: #d1cacc;
+  --gray-400: #a89a9d;
+  --gray-500: #7d6e72;
+  --gray-600: #5a4d50;
   --success: #22c55e;
   --warning: #f59e0b;
   --error: #ef4444;
-  --shadow-sm: 0 1px 3px rgba(30,39,97,0.08), 0 1px 2px rgba(30,39,97,0.05);
-  --shadow-md: 0 4px 12px rgba(30,39,97,0.12), 0 2px 6px rgba(30,39,97,0.06);
-  --shadow-lg: 0 16px 40px rgba(30,39,97,0.18), 0 4px 12px rgba(30,39,97,0.08);
+  --shadow-sm: 0 1px 3px rgba(163,31,52,0.08), 0 1px 2px rgba(163,31,52,0.05);
+  --shadow-md: 0 4px 12px rgba(163,31,52,0.12), 0 2px 6px rgba(163,31,52,0.06);
+  --shadow-lg: 0 16px 40px rgba(163,31,52,0.18), 0 4px 12px rgba(163,31,52,0.08);
   --radius: 12px;
   --radius-sm: 8px;
   --radius-lg: 16px;
@@ -1311,6 +1311,45 @@ input, textarea { font-family: inherit; }
   line-height: 1.5;
   border-top: 1px solid var(--gray-100);
   padding-top: 12px;
+}
+
+.bid-row-conflict { border-color: #fee2e2; background: #fffbfb; }
+
+/* Section toggle buttons */
+.section-toggle-group {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.section-toggle-btn {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--gray-200);
+  background: var(--white);
+  color: var(--gray-600);
+  font-size: 11px;
+  font-weight: 500;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.section-toggle-btn:hover {
+  border-color: var(--navy);
+  color: var(--navy);
+}
+
+.section-toggle-btn.active {
+  background: var(--navy);
+  color: var(--white);
+  border-color: var(--navy);
+}
+
+.section-single {
+  font-size: 11px;
+  color: var(--gray-400);
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 /* ── Chat Widget ── */

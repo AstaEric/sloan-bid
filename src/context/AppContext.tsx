@@ -1,6 +1,7 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
-import type { Course, Screen, ChatMessage, ScheduledCourse } from '../types';
+import { createContext, useContext, useState, useRef, type ReactNode } from 'react';
+import type { Course, Screen, ChatMessage } from '../types';
 import { STUDENT } from '../data/courses';
+import { generateAIResponse } from '../utils/aiCounselor';
 
 interface AppState {
   screen: Screen;
@@ -16,10 +17,8 @@ interface AppState {
   toggleChat: () => void;
   chatMessages: ChatMessage[];
   addChatMessage: (msg: ChatMessage) => void;
-  scheduledCourses: ScheduledCourse[];
-  setScheduledCourses: (sc: ScheduledCourse[]) => void;
-  bidPoints: Record<string, number>;
-  setBidPoints: (bp: Record<string, number>) => void;
+  sectionOverrides: Record<string, string>;
+  setSectionOverride: (courseId: string, sectionId: string) => void;
   student: typeof STUDENT;
 }
 
@@ -33,14 +32,6 @@ const INITIAL_CHAT: ChatMessage[] = [
   },
 ];
 
-const AI_RESPONSES = [
-  "Based on your priorities, I'd suggest putting more bid points on AI for Decision Makers — it fills up fast and has high demand.",
-  "You have a conflict on Mon/Wed 10am. Since New Enterprises only has one section, I'd prioritize that and switch AI for Decision Makers to the Tue/Thu section.",
-  "Your schedule looks solid! You have a good mix of quantitative and soft-skill courses. Ready to review your final bid?",
-];
-
-let aiResponseIndex = 0;
-
 export function AppProvider({ children }: { children: ReactNode }) {
   const [screen, setScreen] = useState<Screen>('login');
   const [addedCourses, setAddedCourses] = useState<Course[]>([]);
@@ -48,8 +39,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [niceToHave, setNiceToHave] = useState<Course[]>([]);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(INITIAL_CHAT);
-  const [scheduledCourses, setScheduledCourses] = useState<ScheduledCourse[]>([]);
-  const [bidPoints, setBidPoints] = useState<Record<string, number>>({});
+  const [sectionOverrides, setSectionOverrides] = useState<Record<string, string>>({});
+
+  // Refs for stale-closure prevention in setTimeout
+  const needRef = useRef(needToHave);
+  needRef.current = needToHave;
+  const niceRef = useRef(niceToHave);
+  niceRef.current = niceToHave;
+  const overridesRef = useRef(sectionOverrides);
+  overridesRef.current = sectionOverrides;
 
   const addCourse = (c: Course) => {
     if (!addedCourses.find((x) => x.id === c.id)) {
@@ -61,19 +59,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAddedCourses((prev) => prev.filter((c) => c.id !== id));
     setNeedToHave((prev) => prev.filter((c) => c.id !== id));
     setNiceToHave((prev) => prev.filter((c) => c.id !== id));
+    setSectionOverrides((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   };
 
   const toggleChat = () => setIsChatOpen((v) => !v);
+
+  const setSectionOverride = (courseId: string, sectionId: string) => {
+    setSectionOverrides((prev) => ({ ...prev, [courseId]: sectionId }));
+  };
 
   const addChatMessage = (msg: ChatMessage) => {
     setChatMessages((prev) => [...prev, msg]);
     if (msg.role === 'user') {
       setTimeout(() => {
-        const response = AI_RESPONSES[aiResponseIndex % AI_RESPONSES.length];
-        aiResponseIndex++;
+        const result = generateAIResponse(msg.text, {
+          needToHave: needRef.current,
+          niceToHave: niceRef.current,
+          sectionOverrides: overridesRef.current,
+        });
+
+        if (result.sectionOverride) {
+          setSectionOverrides((prev) => ({
+            ...prev,
+            [result.sectionOverride!.courseId]: result.sectionOverride!.sectionId,
+          }));
+        }
+
         setChatMessages((prev) => [
           ...prev,
-          { id: `ai-${Date.now()}`, role: 'assistant', text: response },
+          { id: `ai-${Date.now()}`, role: 'assistant', text: result.text },
         ]);
       }, 800);
     }
@@ -95,10 +113,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         toggleChat,
         chatMessages,
         addChatMessage,
-        scheduledCourses,
-        setScheduledCourses,
-        bidPoints,
-        setBidPoints,
+        sectionOverrides,
+        setSectionOverride,
         student: STUDENT,
       }}
     >

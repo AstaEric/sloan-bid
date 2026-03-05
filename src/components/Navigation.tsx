@@ -8,10 +8,7 @@ const NAV_ITEMS: { screen: Screen; label: string; icon: string }[] = [
 ];
 
 export function Navigation() {
-  const { screen, setScreen, student, toggleChat, isChatOpen, addedCourses, bidPoints } = useApp();
-
-  const usedPoints = Object.values(bidPoints).reduce((s, v) => s + v, 0);
-  const remaining = student.totalBidPoints - usedPoints;
+  const { screen, setScreen, student, toggleChat, isChatOpen, addedCourses } = useApp();
 
   return (
     <nav className="navigation">
@@ -51,8 +48,7 @@ export function Navigation() {
           <div className="nav-student-info">
             <div className="nav-student-name">{student.name}</div>
             <div className="nav-points">
-              <span className="points-remaining">{remaining}</span>
-              <span className="points-label"> pts remaining</span>
+              <span className="points-label">{student.program}</span>
             </div>
           </div>
         </div>
